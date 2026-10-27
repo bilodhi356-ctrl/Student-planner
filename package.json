@@ -1,0 +1,37 @@
+{
+  "name": "classday-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite --config client/vite.config.js",
+    "dev:server": "node --watch server/index.js",
+    "build": "vite build --config client/vite.config.js",
+    "start": "node server/index.js",
+    "db:migrate": "node server/db/migrate.js",
+    "db:seed": "node server/db/seed.js",
+    "test": "node --test server/**/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "csv-parse": "^6.1.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ics": "^3.8.1",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.10.0",
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

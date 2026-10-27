@@ -1,0 +1,9 @@
+course_code,unit_name,program_code,program_name,year,semester,type,day,date,start_time,end_time,venue,building,group
+CSC 204,Data Structures,BSC-CS,BSc Computer Science,2,1,lecture,Monday,,09:00,10:30,Science 204,Science Block,A
+CSC 204,Data Structures,BSC-CS,BSc Computer Science,2,1,lecture,Wednesday,,09:00,10:30,Science 204,Science Block,A
+MAT 210,Discrete Mathematics,BSC-CS,BSc Computer Science,2,1,lecture,Monday,,10:30,12:00,Math Hall 12,Math Block,A
+PHY 102,Physics II,BSC-CS,BSc Computer Science,1,2,lecture,Tuesday,,13:00,14:30,Physics Lab,Science Block,A
+ENG 201,Technical Writing,BSC-CS,BSc Computer Science,2,1,lecture,Thursday,,11:00,12:30,Room B14,Humanities Block,A
+CSC 204,Data Structures,BSC-CS,BSc Computer Science,2,1,exam,,2026-11-10,09:00,11:00,Main Hall,Main Campus,A
+MAT 210,Discrete Mathematics,BSC-CS,BSc Computer Science,2,1,exam,,2026-11-10,13:00,15:00,Main Hall,Main Campus,A
+PHY 102,Physics II,BSC-CS,BSc Computer Science,1,2,exam,,2026-11-12,09:00,11:00,Exam Centre,Main Campus,A
