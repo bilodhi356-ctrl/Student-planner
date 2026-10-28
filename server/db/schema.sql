@@ -4,6 +4,10 @@ CREATE TABLE IF NOT EXISTS programs (
   name TEXT NOT NULL
 );
 
+INSERT INTO programs(code, name)
+VALUES ('BSC-CT', 'BSc Computer Technology'), ('BSC-CS', 'BSc Computer Science')
+ON CONFLICT (code) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS students (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -33,6 +37,16 @@ CREATE TABLE IF NOT EXISTS units (
   semester INTEGER NOT NULL CHECK (semester BETWEEN 1 AND 3),
   active BOOLEAN NOT NULL DEFAULT TRUE
 );
+
+CREATE TABLE IF NOT EXISTS unit_programs (
+  unit_id BIGINT NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+  program_id BIGINT NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+  PRIMARY KEY (unit_id, program_id)
+);
+
+INSERT INTO unit_programs(unit_id, program_id)
+SELECT id, program_id FROM units WHERE program_id IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS sessions (
   id BIGSERIAL PRIMARY KEY,

@@ -9,12 +9,25 @@ const time=(value)=>{if(!value)return '';const [h,m]=String(value).slice(0,5).sp
 const prettyDate=(value,opts={weekday:'short',month:'short',day:'numeric'})=>new Date(`${String(value).slice(0,10)}T12:00:00`).toLocaleDateString(undefined,opts);
 const errorText=(e)=>e instanceof Error?e.message:'Something went wrong.';
 
+async function readJsonResponse(response){
+  const text=await response.text();
+  let body=null;
+  if(text.trim()){
+    try{body=JSON.parse(text)}catch{
+      if(response.ok)throw new Error(`The server returned an invalid response (HTTP ${response.status}).`);
+    }
+  }
+  if(!response.ok){
+    const message=body&&typeof body.error==='string'?body.error:`Request failed (HTTP ${response.status}${response.statusText?` ${response.statusText}`:''}).`;
+    throw new Error(message);
+  }
+  if(!text.trim())throw new Error(`The server returned an empty response (HTTP ${response.status}).`);
+  return body;
+}
+
 async function request(path,{token,...options}={}){
   const response=await fetch(path,{...options,headers:{...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...(token?{Authorization:`Bearer ${token}`} :{}),...options.headers}});
-  const type=response.headers.get('content-type')||'';
-  const body=type.includes('application/json')?await response.json():await response.text();
-  if(!response.ok)throw new Error(body?.error||'Request failed.');
-  return body;
+  return readJsonResponse(response);
 }
 
 function AuthScreen({onAuth}){
@@ -45,7 +58,8 @@ function App(){
   const pasteUnits=()=>{const codes=new Set(paste.toUpperCase().split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean));const found=units.filter(u=>codes.has(u.code.toUpperCase()));setSelected(current=>[...current,...found.filter(u=>!current.some(x=>String(x.id)===String(u.id))).map(u=>({id:u.id,group:''}))]);if(!found.length)setError('No matching unit codes were found in the current year and semester.');else setNotice(`${found.length} unit${found.length===1?'':'s'} added from your list.`)};
   const saveReminders=async(e)=>{e.preventDefault();try{const updated=await request('/api/reminders',{token:auth.token,method:'PUT',body:JSON.stringify(reminders)});setReminders(updated);setNotice('Reminder preferences saved.')}catch(err){setError(errorText(err))}};
   const downloadCalendar=async()=>{try{const response=await fetch('/api/calendar.ics',{headers:{Authorization:`Bearer ${auth.token}`}});if(!response.ok)throw new Error('Could not export your calendar.');const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='student-planner-schedule.ics';link.click();URL.revokeObjectURL(url)}catch(err){setError(errorText(err))}};
-  const upload=async(e)=>{e.preventDefault();const file=e.currentTarget.file.files[0];if(!file)return setError('Choose a CSV or Excel file first.');setBusy(true);setError('');try{const result=await fetch('/api/admin/import',{method:'POST',headers:{Authorization:`Bearer ${auth.token}`,'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file});const body=await result.json();if(!result.ok)throw new Error(body.error);setNotice(`Imported ${body.rowCount} rows. ${body.added} added, ${body.changed} changed, and ${body.removed} removed.`);e.target.reset();await load()}catch(err){setError(errorText(err))}finally{setBusy(false)}};
+  const uploadUnits=async(e)=>{e.preventDefault();const form=e.currentTarget,file=form.elements.file.files[0];if(!file)return setError('Choose a units-offered file first.');setBusy(true);setError('');try{const result=await fetch('/api/admin/units/import',{method:'POST',headers:{Authorization:`Bearer ${auth.token}`,'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file});  const body=await readJsonResponse(result);setNotice(`Imported ${body.rowCount} offered units. Existing timetable sessions were not changed.`);form.reset();await load()}catch(err){setError(errorText(err))}finally{setBusy(false)}};
+  const upload=async(e)=>{e.preventDefault();const file=e.currentTarget.file.files[0];if(!file)return setError('Choose a timetable file first.');setBusy(true);setError('');try{const result=await fetch('/api/admin/import',{method:'POST',headers:{Authorization:`Bearer ${auth.token}`,'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file});  const body=await readJsonResponse(result);setNotice(`Imported ${body.rowCount} rows. ${body.added} added, ${body.changed} changed, and ${body.removed} removed.`);e.target.reset();await load()}catch(err){setError(errorText(err))}finally{setBusy(false)}};
   const signOut=()=>{setAuth(null);setPage('overview')};
   const currentWeekEvents=schedule.sessions.filter(s=>s.kind==='lecture'||(s.session_date>=from&&s.session_date<=localDate(plusDays(startOfWeek,6))));
   const nextExams=schedule.sessions.filter(s=>s.kind==='exam'&&s.session_date>=localDate(today)).sort((a,b)=>a.session_date.localeCompare(b.session_date)||a.start_time.localeCompare(b.start_time));
@@ -62,7 +76,34 @@ function App(){
   const examPage=<><PageHeading eyebrow="DATES TO REMEMBER" title="Exam schedule" sub={`${nextExams.length} upcoming exams · same-day exam combinations are flagged`}><div className="export-actions"><button className="secondary" onClick={()=>window.print()}>Export PDF</button>{selected.length>0&&<button className="secondary" onClick={downloadCalendar}>Download .ics</button>}</div></PageHeading><section className="panel exam-list">{nextExams.length?nextExams.map((s,i)=><AgendaRow key={`${s.id}-${i}`} session={s} exam/>):<Empty title="No exams to show" text="Exam dates will appear here after the master timetable is uploaded."/>}</section>{schedule.clashes.some(c=>c.type==='same-day-exams')&&<section className="panel section-panel"><PanelHead title="Same-day exams" sub="Check the spacing between these exam sittings."/><div className="clash-list">{clashItems(schedule.clashes.filter(c=>c.type==='same-day-exams'))}</div></section>}</>;
   const changesPage=<><PageHeading eyebrow="MASTER TIMETABLE" title="Schedule updates" sub="Changes affecting the units you selected."/><section className="panel">{changes.length?<ChangeList changes={changes}/>:<Empty title="No timetable changes" text="When your class rep uploads a revised timetable, changes for your units will be listed here."/>}</section></>;
   const remindersPage=<><PageHeading eyebrow="STAY ON TOP OF YOUR WEEK" title="Email reminders" sub="Set when you want a reminder before your exams or first class."/><section className="panel section-panel narrow-panel"><PanelHead title="Reminder preferences" sub="Messages are sent to your account email when SMTP is configured by the administrator."/><form onSubmit={saveReminders} className="stack-form"><label className="toggle-row"><span><b>Email reminders</b><small>Turn all reminders on or off.</small></span><input type="checkbox" checked={reminders.enabled} onChange={e=>setReminders({...reminders,enabled:e.target.checked})}/></label><label>Exam reminder<select value={reminders.exam_hours_before} onChange={e=>setReminders({...reminders,exam_hours_before:Number(e.target.value)})}><option value="12">12 hours before</option><option value="24">24 hours before</option><option value="48">2 days before</option><option value="72">3 days before</option></select></label><label>First class reminder<select value={reminders.class_minutes_before} onChange={e=>setReminders({...reminders,class_minutes_before:Number(e.target.value)})}><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="120">2 hours before</option><option value="1440">1 day before</option></select></label><button className="primary">Save preferences</button></form></section></>;
-  const adminPage=<><PageHeading eyebrow="ADMINISTRATION" title="Master timetable" sub="Upload the latest lecture and exam schedule. CSV and Excel files are supported."/><section className="panel section-panel"><PanelHead title="Upload a timetable" sub="A new upload replaces the active master schedule and records changes for affected students."/><form onSubmit={upload} className="upload-form"><label className="upload-drop"><span className="upload-icon">↑</span><b>Choose a timetable file</b><small>CSV, XLSX, or XLS · up to 12 MB</small><input name="file" type="file" accept=".csv,.xlsx,.xls" required/></label><button className="primary" disabled={busy}>{busy?'Importing…':'Upload timetable'}</button></form><div className="format-note"><b>Required columns</b><code>course_code, unit_name, year, semester, type, start_time, end_time, venue</code><b>Lecture columns</b><code>day, group</code><b>Exam column</b><code>date</code><span>Days accept full weekday names. Time accepts 24-hour time or AM/PM. Each row represents one lecture or exam session.</span></div></section></>;
+  const adminPage=<>
+    <PageHeading eyebrow="ADMINISTRATION" title="Master timetable" sub="Upload the latest lecture and exam schedule. CSV, Excel, and PDF files are supported."/>
+    <section className="panel section-panel">
+      <PanelHead title="Upload a timetable" sub="A new upload replaces the active master schedule and records changes for affected students."/>
+      <form onSubmit={upload} className="upload-form">
+        <label className="upload-drop"><span className="upload-icon">↑</span><b>Choose a timetable file</b><small>CSV, XLSX, XLS, or PDF up to 12 MB</small><input name="file" type="file" accept=".csv,.xlsx,.xls,.pdf" required/></label>
+        <button className="primary" disabled={busy}>{busy?'Importing…':'Upload timetable'}</button>
+      </form>
+      <div className="format-note">
+        <b>Required columns</b><code>course_code, unit_name, year, semester, type, start_time, end_time, venue</code>
+        <b>Lecture columns</b><code>day, group</code>
+        <b>Exam column</b><code>date</code>
+        <span>Days accept full weekday names. Time accepts 24-hour time or AM/PM. Each row represents one lecture or exam session. PDFs can be structured tables or selectable-text weekly timetables arranged by day, group, and hour; image-only scans aren’t supported.</span>
+      </div>
+    </section>
+    <section className="panel section-panel">
+      <PanelHead title="Upload units offered" sub="Add or update the units students can select, separately from the timetable."/>
+      <form onSubmit={uploadUnits} className="upload-form">
+        <label className="upload-drop"><span className="upload-icon">↑</span><b>Choose a units-offered file</b><small>PDF, CSV, XLSX, or XLS — up to 12 MB</small><input name="file" type="file" accept=".pdf,.csv,.xlsx,.xls" required/></label>
+        <button className="primary" disabled={busy}>{busy?'Importing…':'Upload units'}</button>
+      </form>
+      <div className="format-note">
+        <b>Required columns</b><code>course_code, unit_name, year, semester</code>
+        <b>Optional columns</b><code>program_code, program_name</code>
+        <span>PDFs may use a year-section list like “YEAR ONE” under a “SEMESTER ONE” title; scanned/image-only PDFs are read with local English OCR. Structured tables with the required columns are also supported. Matching unit codes are updated; timetable sessions and units not in the file are preserved.</span>
+      </div>
+    </section>
+  </>;
   const pages={overview:dashboard,units:unitPage,timetable:timetablePage,exams:examPage,changes:changesPage,reminders:remindersPage,admin:adminPage};
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark">✳</span>Student <span>Planner</span></div><p className="nav-label">YOUR PLANNER</p><nav>{nav.map(([key,icon,label])=><button className={page===key?'active':''} key={key} onClick={()=>setPage(key)}><span>{icon}</span>{label}{key==='changes'&&changes.length>0&&<small className="nav-count">{changes.length}</small>}</button>)}</nav>{auth.user.role!=='student'&&<><p className="nav-label admin-label">ADMINISTRATION</p><nav><button className={page==='admin'?'active':''} onClick={()=>setPage('admin')}><span>↑</span>Master timetable</button></nav></>}<div className="sidebar-tip"><b>Timetable changed?</b>We’ll show updates for your selected units here.<button onClick={()=>setPage('changes')}>View updates →</button></div><div className="sidebar-user"><div className="avatar">{auth.user.name?.[0]?.toUpperCase()||'S'}</div><div><b>{auth.user.name}</b><small>{auth.user.role==='admin'?'Administrator':auth.user.role==='class_rep'?'Class representative':'Student'}</small></div><button title="Sign out" onClick={signOut}>↗</button></div></aside><div className="workspace"><header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>{nav.find(n=>n[0]===page)?.[2]||(page==='admin'?'Master timetable':'Overview')}</b></div><div className="top-right"><span>{prettyDate(localDate(today),{weekday:'short',month:'short',day:'numeric'})}</span><div className="avatar">{auth.user.name?.[0]?.toUpperCase()||'S'}</div></div></header><main className="main">{error&&<div className="error-banner"><span>{error}</span><button onClick={()=>setError('')}>×</button></div>}{notice&&<div className="success-banner"><span>{notice}</span><button onClick={()=>setNotice('')}>×</button></div>}{pages[page]||dashboard}</main></div></div>;
 }

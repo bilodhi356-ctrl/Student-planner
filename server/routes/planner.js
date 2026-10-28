@@ -2,6 +2,7 @@ import { Router } from 'express';
 import express from 'express';
 import { createEvents } from 'ics';
 import { parseTimetable, importTimetable } from '../services/importTimetable.js';
+import { importUnitOfferings, parseUnitOfferings } from '../services/unitOfferings.js';
 import { detectScheduleClashes } from '../domain/clashes.js';
 import { pool } from '../db/index.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
@@ -23,7 +24,8 @@ router.get('/units', async (req, res, next) => {
     const { rows } = await pool.query(`SELECT u.id,u.code,u.name,u.year,u.semester,
       COALESCE(json_agg(DISTINCT s.group_name) FILTER (WHERE s.id IS NOT NULL),'[]') groups
       FROM units u LEFT JOIN sessions s ON s.unit_id=u.id WHERE u.active=TRUE
-      AND ($1::int IS NULL OR u.year=$1) AND ($2::int IS NULL OR u.semester=$2) AND ($3::bigint IS NULL OR u.program_id=$3)
+      AND ($1::int IS NULL OR u.year=$1) AND ($2::int IS NULL OR u.semester=$2)
+      AND ($3::bigint IS NULL OR EXISTS (SELECT 1 FROM unit_programs up WHERE up.unit_id=u.id AND up.program_id=$3))
       GROUP BY u.id ORDER BY u.code`, [year ? Number(year) : null, semester ? Number(semester) : null,program?Number(program):null]);
     res.json(rows);
   } catch (error) { next(error); }
@@ -133,10 +135,23 @@ router.post('/admin/import', requireAdmin, express.raw({ type: () => true, limit
   try {
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'Choose a timetable file to upload.' });
     const filename = decodeURIComponent(req.headers['x-file-name'] || 'timetable.csv');
-    const rows = parseTimetable(req.body,filename);
+    const rows = await parseTimetable(req.body,filename);
     const result = await importTimetable(rows,filename,req.user.sub);
     res.json(result);
   } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+router.post('/admin/units/import', requireAdmin, express.raw({ type: () => true, limit: '12mb' }), async (req, res) => {
+  try {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'Choose a units-offered file to upload.' });
+    const filename = decodeURIComponent(req.headers['x-file-name'] || 'units.csv');
+    const rows = await parseUnitOfferings(req.body, filename);
+    res.json(await importUnitOfferings(rows, {
+      syncProgramLinks: /\.pdf$/i.test(filename) && rows.some((row) => row.programCode)
+    }));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 router.get('/reminders', async (req, res, next) => {

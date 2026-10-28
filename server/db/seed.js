@@ -13,7 +13,7 @@ try {
   }
   const sample=fileURLToPath(new URL('../../sample-timetable.csv',import.meta.url));
   const bytes=await readFile(sample);
-  const rows=parseTimetable(bytes,'sample-timetable.csv');
+  const rows=await parseTimetable(bytes,'sample-timetable.csv');
   const {rows:admins}=await pool.query("SELECT id FROM students WHERE role='admin' ORDER BY id LIMIT 1");
   await importTimetable(rows,'sample-timetable.csv',admins[0]?.id||null);
   console.log(`Imported ${rows.length} sample timetable rows.`);

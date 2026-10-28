@@ -64,13 +64,13 @@ The service runs database migrations at startup. Free services may spin down whe
 
 ## Master timetable file format
 
-Upload `.csv`, `.xlsx`, or `.xls` from **Administration → Master timetable**. The first sheet is read for Excel files. Required column names are:
+Upload `.csv`, `.xlsx`, `.xls`, or a PDF from **Administration → Master timetable**. The first sheet is read for Excel files. PDFs may contain either a structured table with the required column headings below or a selectable-text weekly timetable arranged by weekday, cohort/group, and hourly columns (such as the Maseno University teaching timetable layout). Image-only scanned timetables are not supported. The weekly-grid importer reads the semester from the PDF heading and maps each timetable cell to a lecture session; unit names default to their codes unless an offered-units list has already supplied names. Required column names for a timetable are:
 
 | Column | Meaning |
 | --- | --- |
 | `course_code` | Unit code, such as `CSC 204` |
 | `unit_name` | Unit title |
-| `program_code`, `program_name` | Optional program/course identifiers, such as `BSC-CS` and `BSc Computer Science` |
+| `program_code`, `program_name` | Optional program/course identifiers, such as `BSC-CS` / `BSc Computer Science` or `BSC-CT` / `BSc Computer Technology` |
 | `year` | Study year (1–8) |
 | `semester` | Semester (1–3) |
 | `type` | `lecture` or `exam` |
@@ -82,6 +82,8 @@ Upload `.csv`, `.xlsx`, or `.xls` from **Administration → Master timetable**. 
 | `building` | Optional building name |
 
 The included `sample-timetable.csv` demonstrates the format. Each row represents one session. Re-uploading a master timetable replaces the active sessions and records added, changed, and removed rows for students who selected the affected units.
+
+Administrators can also upload a separate units-offered list in CSV, Excel, or text-based PDF format. It requires `course_code`, `unit_name`, `year`, and `semester`; `program_code` and `program_name` are optional. Allocation PDFs with Computer Science and Computer Technology sections are imported as separate programs, with units shared by both linked to both programs. Repeated unit codes within a program are merged, category suffixes are removed from titles, and the cleanest title is kept. A program-section PDF refreshes those programs' unit links to match the file, while keeping unit records, sessions, and other programs unchanged. CSV imports add or update units without removing program links.
 
 ## Clash rules
 
