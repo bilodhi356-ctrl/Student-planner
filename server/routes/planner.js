@@ -5,7 +5,7 @@ import { parseTimetable, importTimetable } from '../services/importTimetable.js'
 import { importUnitOfferings, parseUnitOfferings } from '../services/unitOfferings.js';
 import { detectScheduleClashes } from '../domain/clashes.js';
 import { pool } from '../db/index.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAdministrator, requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -16,6 +16,13 @@ router.get('/programs', async (_req,res,next)=>{
 
 router.get('/academic-profile', async(req,res,next)=>{
   try{const {rows}=await pool.query('SELECT program_id,year_of_study,semester FROM students WHERE id=$1',[req.user.sub]);res.json(rows[0]||{})}catch(error){next(error)}
+});
+
+router.get('/admin/stats', requireAdministrator, async (_req,res,next)=>{
+  try{
+    const {rows}=await pool.query("SELECT COUNT(*)::int AS student_count FROM students WHERE role='student'");
+    res.json(rows[0]);
+  }catch(error){next(error)}
 });
 
 router.get('/units', async (req, res, next) => {

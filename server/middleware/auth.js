@@ -11,3 +11,8 @@ export function requireAdmin(req, res, next) {
   if (!['admin','class_rep'].includes(req.user?.role)) return res.status(403).json({ error: 'Class representative access is required.' });
   next();
 }
+
+export function requireAdministrator(req, res, next) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Administrator access is required.' });
+  next();
+}
