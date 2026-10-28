@@ -62,6 +62,8 @@ The included `render.yaml` configures a free web service and PostgreSQL database
 
 The service runs database migrations at startup. Free services may spin down when idle, so the first request after inactivity can take a little while.
 
+The Render build command installs development dependencies explicitly so Vite remains available during the production build.
+
 ## Master timetable file format
 
 Upload `.csv`, `.xlsx`, `.xls`, or a PDF from **Administration → Master timetable**. The first sheet is read for Excel files. PDFs may contain either a structured table with the required column headings below or a selectable-text weekly timetable arranged by weekday, cohort/group, and hourly columns (such as the Maseno University teaching timetable layout). Image-only scanned timetables are not supported. The weekly-grid importer reads the semester from the PDF heading and maps each timetable cell to a lecture session; unit names default to their codes unless an offered-units list has already supplied names. Required column names for a timetable are:
