@@ -47,7 +47,7 @@ Student Planner lets students choose units, view their personal lecture and exam
    npm run dev
    ```
 
-8. Open `http://localhost:5173` in your browser. Register a student account. The admin email and password come from `.env` (`ADMIN_EMAIL` and `ADMIN_PASSWORD`).
+8. Open `http://localhost:5173` in your browser. Register a student account with a university email and registration number, such as `CCT/00002/2023` for BSc Computer Technology or `CCS/00023/2023` for BSc Computer Science. The final four digits are the admission year. Students can sign in with their registration number or email. The admin email and password come from `.env` (`ADMIN_EMAIL` and `ADMIN_PASSWORD`).
 9. To give a class representative upload access, promote a registered account in PostgreSQL: `UPDATE students SET role='class_rep' WHERE email='rep@example.edu';`.
 
 ### Deploy to Render (free demo)

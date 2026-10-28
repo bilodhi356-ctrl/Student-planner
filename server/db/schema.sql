@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS students (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE students ADD COLUMN IF NOT EXISTS registration_number TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS students_registration_number_unique_idx
+  ON students (UPPER(registration_number)) WHERE registration_number IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS venues (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,

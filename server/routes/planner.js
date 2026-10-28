@@ -27,7 +27,7 @@ router.get('/admin/stats', requireAdministrator, async (_req,res,next)=>{
 
 router.get('/admin/students', requireAdministrator, async (_req,res,next)=>{
   try{
-    const {rows}=await pool.query(`SELECT s.id,s.name,s.email,p.name AS program,s.year_of_study,s.semester,s.created_at
+    const {rows}=await pool.query(`SELECT s.id,s.name,s.email,s.registration_number,p.name AS program,s.year_of_study,s.semester,s.created_at
       FROM students s LEFT JOIN programs p ON p.id=s.program_id
       WHERE s.role='student' ORDER BY s.name,s.email`);
     res.json(rows);
