@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import express from 'express';
+import { ObjectId } from 'mongodb';
 import { createEvents } from 'ics';
 import { parseTimetable, importTimetable } from '../services/importTimetable.js';
 import { importUnitOfferings, parseUnitOfferings } from '../services/unitOfferings.js';
@@ -67,7 +68,9 @@ router.get('/units', async (req, res, next) => {
     if (semester) query.semester = Number(semester);
     let units = await collections.units.find(query).toArray();
     if (program) {
-      const links = await collections.unitPrograms.find({ program_id: String(program) }).toArray();
+      const programIds = [String(program)];
+      if (ObjectId.isValid(String(program))) programIds.push(new ObjectId(String(program)));
+      const links = await collections.unitPrograms.find({ program_id: { $in: programIds } }).toArray();
       const linkedUnitIds = new Set(links.map((link) => link.unit_id));
       units = units.filter((unit) => linkedUnitIds.has(unit._id));
     }
