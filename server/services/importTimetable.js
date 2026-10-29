@@ -100,7 +100,7 @@ export async function importTimetable(rows, filename, adminId) {
     });
     const coursesByProgram = new Map();
     const unitNames = new Map();
-    for (const offering of offeringResult.rows) {
+    for (const offering of offeringResult) {
       const codes = coursesByProgram.get(offering.program_code) || [];
       codes.push(offering.code.toUpperCase());
       coursesByProgram.set(offering.program_code, codes);
