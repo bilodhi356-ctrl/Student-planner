@@ -1,4 +1,5 @@
-import { pool } from '../db/index.js';
+import { randomUUID } from 'node:crypto';
+import { collections } from '../db/index.js';
 import { extractPdfUnitOfferings } from './pdfTimetable.js';
 import { parseUploadRecords } from './uploadRecords.js';
 
@@ -67,39 +68,55 @@ export async function parseUnitOfferings(buffer, filename = 'units.csv') {
 }
 
 export async function importUnitOfferings(rows, { syncProgramLinks = false } = {}) {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
     const programIds = new Map();
     for (const row of rows) {
       let programId = null;
       if (row.programCode) {
-        const program = await client.query(`INSERT INTO programs(code,name) VALUES($1,$2)
-          ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name RETURNING id`,
-        [row.programCode, row.programName || row.programCode]);
-        programId = program.rows[0].id;
+        await collections.programs.updateOne(
+          { code: row.programCode },
+          { $set: { name: row.programName || row.programCode }, $setOnInsert: { _id: randomUUID() } },
+          { upsert: true }
+        );
+        programId = (await collections.programs.findOne({ code: row.programCode }))._id;
         programIds.set(row.programCode, programId);
       }
-      const unit = await client.query(`INSERT INTO units(code,name,year,semester,program_id,active) VALUES($1,$2,$3,$4,$5,TRUE)
-        ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name,year=EXCLUDED.year,semester=EXCLUDED.semester,
-        program_id=COALESCE(units.program_id,EXCLUDED.program_id),active=TRUE RETURNING id`,
-      [row.code, row.name, row.year, row.semester, programId]);
-      if (programId) await client.query(`INSERT INTO unit_programs(unit_id,program_id) VALUES($1,$2)
-        ON CONFLICT(unit_id,program_id) DO NOTHING`, [unit.rows[0].id, programId]);
+      const existingUnit = await collections.units.findOne({ code: row.code });
+      const unitId = existingUnit?._id || randomUUID();
+      await collections.units.updateOne(
+        { code: row.code },
+        { $set: {
+          name: row.name,
+          year: row.year,
+          semester: row.semester,
+          program_id: existingUnit?.program_id || programId,
+          active: true
+        }, $setOnInsert: { _id: unitId } },
+        { upsert: true }
+      );
+      if (programId) {
+        await collections.unitPrograms.updateOne(
+          { unit_id: unitId, program_id: programId },
+          { $setOnInsert: { _id: `${unitId}:${programId}` } },
+          { upsert: true }
+        );
+      }
     }
     if (syncProgramLinks) {
       for (const [programCode, programId] of programIds) {
         const codes = [...new Set(rows.filter((row) => row.programCode === programCode).map((row) => row.code))];
-        await client.query(`DELETE FROM unit_programs up USING units u
-          WHERE up.unit_id=u.id AND up.program_id=$1 AND NOT (u.code = ANY($2::text[]))`, [programId, codes]);
+        const obsoleteUnits = await collections.units.find(
+          { code: { $nin: codes } },
+          { projection: { _id: 1 } }
+        ).toArray();
+        if (obsoleteUnits.length) {
+          await collections.unitPrograms.deleteMany({
+            program_id: programId,
+            unit_id: { $in: obsoleteUnits.map((unit) => unit._id) }
+          });
+        }
       }
     }
-    await client.query('COMMIT');
     return { rowCount: rows.length };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  } catch (error) { throw error; }
 }

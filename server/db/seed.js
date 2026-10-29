@@ -1,21 +1,35 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+import { closeDatabase, collections, connectDatabase } from './index.js';
+import { parseTimetable, importTimetable } from '../services/importTimetable.js';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { pool } from './index.js';
-import { parseTimetable, importTimetable } from '../services/importTimetable.js';
 
 try {
-  if(process.env.ADMIN_EMAIL&&process.env.ADMIN_PASSWORD){
-    const passwordHash=await bcrypt.hash(process.env.ADMIN_PASSWORD,12);
-    await pool.query(`INSERT INTO students(name,email,password_hash,role) VALUES('Timetable administrator',$1,$2,'admin')
-      ON CONFLICT(email) DO UPDATE SET password_hash=EXCLUDED.password_hash,role='admin'`,[process.env.ADMIN_EMAIL.toLowerCase(),passwordHash]);
+  await connectDatabase();
+  if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+    const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 12);
+    await collections.students.updateOne(
+      { email: process.env.ADMIN_EMAIL.toLowerCase() },
+      { $set: { password_hash: passwordHash, role: 'admin' }, $setOnInsert: {
+        name: 'Timetable administrator',
+        created_at: new Date(),
+        program_id: null,
+        year_of_study: null,
+        semester: null
+      } },
+      { upsert: true }
+    );
   }
-  const sample=fileURLToPath(new URL('../../sample-timetable.csv',import.meta.url));
-  const bytes=await readFile(sample);
-  const rows=await parseTimetable(bytes,'sample-timetable.csv');
-  const {rows:admins}=await pool.query("SELECT id FROM students WHERE role='admin' ORDER BY id LIMIT 1");
-  await importTimetable(rows,'sample-timetable.csv',admins[0]?.id||null);
+  const sample = fileURLToPath(new URL('../../sample-timetable.csv', import.meta.url));
+  const bytes = await readFile(sample);
+  const rows = await parseTimetable(bytes, 'sample-timetable.csv');
+  const admin = await collections.students.findOne({ role: 'admin' }, { sort: { _id: 1 }, projection: { _id: 1 } });
+  await importTimetable(rows, 'sample-timetable.csv', admin?._id || null);
   console.log(`Imported ${rows.length} sample timetable rows.`);
-}catch(error){console.error('Seeding failed:',error.message);process.exitCode=1}
-finally{await pool.end()}
+} catch (error) {
+  console.error('Seeding failed:', error.message);
+  process.exitCode = 1;
+} finally {
+  await closeDatabase();
+}

@@ -7,7 +7,7 @@ Student Planner lets students choose units, view their personal lecture and exam
 ### Requirements
 
 - Node.js 20 or newer
-- PostgreSQL 14 or newer, or Docker Desktop for the included PostgreSQL container
+- MongoDB 7 or newer, or Docker Desktop for the included MongoDB container
 - VS Code with a terminal
 
 ### Start the app
@@ -20,13 +20,13 @@ Student Planner lets students choose units, view their personal lecture and exam
    Copy-Item .env.example .env
    ```
 
-4. Start PostgreSQL. With Docker Desktop installed:
+4. Start MongoDB. With Docker Desktop installed:
 
    ```powershell
    docker compose up -d
    ```
 
-   If you use a local PostgreSQL installation instead, create a database named `classday` and update `DATABASE_URL` in `.env`.
+   If you use a local MongoDB installation instead, set `MONGODB_URI` in `.env` (for example, `mongodb://localhost:27017`). The app uses the database named by `MONGODB_DB`.
 
 5. Install JavaScript dependencies:
 
@@ -34,7 +34,7 @@ Student Planner lets students choose units, view their personal lecture and exam
    npm install
    ```
 
-6. Create the database tables and load the sample timetable:
+6. Create the MongoDB indexes and initial program records, then load the sample timetable:
 
    ```powershell
    npm run db:migrate
@@ -48,15 +48,15 @@ Student Planner lets students choose units, view their personal lecture and exam
    ```
 
 8. Open `http://localhost:5173` in your browser. Register a student account with a university email and registration number, such as `CCT/00002/2023` for BSc Computer Technology or `CCS/00023/2023` for BSc Computer Science. The final four digits are the admission year. Students can sign in with their registration number or email. The admin email and password come from `.env` (`ADMIN_EMAIL` and `ADMIN_PASSWORD`).
-9. To give a class representative upload access, promote a registered account in PostgreSQL: `UPDATE students SET role='class_rep' WHERE email='rep@example.edu';`.
+9. To give a class representative upload access, promote a registered account in MongoDB: `db.students.updateOne({ email: 'rep@example.edu' }, { $set: { role: 'class_rep' } })`.
 
 ### Deploy to Render (free demo)
 
-The included `render.yaml` configures a free web service and PostgreSQL database. Render's free PostgreSQL databases expire after 30 days, so use this setup for a demo rather than long-term storage.
+The included `render.yaml` configures a free web service. Provide a MongoDB connection string in Render's `MONGODB_URI` environment variable (for example, from MongoDB Atlas); the database is not hosted by Render.
 
 1. Push this project to a GitHub repository. Do not commit `.env`; it contains local configuration and is ignored by Git.
 2. In Render, choose **New → Blueprint**, connect the repository, and apply the `render.yaml` configuration.
-3. When prompted, enter the admin email and a strong admin password. Render generates the JWT secret, and the database URL is connected automatically.
+3. When prompted, enter the MongoDB connection string, admin email, and a strong admin password. Render generates the JWT secret.
 4. Wait for the service deployment to complete, then open its `onrender.com` URL.
 5. Sign in with the admin credentials and upload `sample-timetable.csv` under **Master timetable** to load the demo schedule.
 
@@ -115,6 +115,6 @@ client/                 React app (Vite)
 server/domain/          Interval expansion and clash detection
 server/routes/          Authentication and planner API
 server/services/        Timetable import and reminder scheduler
-server/db/schema.sql    PostgreSQL models and constraints
+server/db/              MongoDB connection, indexes, and seed scripts
 sample-timetable.csv    Demo import data
 ```

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
@@ -6,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import authRouter from './routes/auth.js';
 import { plannerRouter } from './routes/planner.js';
-import { pool } from './db/index.js';
+import { collections, connectDatabase } from './db/index.js';
 import { startReminderJob } from './services/reminders.js';
 
 const app=express();
@@ -22,8 +23,18 @@ async function ensureAdmin(){
   const password=process.env.ADMIN_PASSWORD;
   if(!email||!password)return;
   const hash=await bcrypt.hash(password,12);
-  await pool.query(`INSERT INTO students(name,email,password_hash,role) VALUES('Timetable administrator',$1,$2,'admin')
-    ON CONFLICT(email) DO UPDATE SET password_hash=EXCLUDED.password_hash,role='admin'`,[email.toLowerCase(),hash]);
+  await collections.students.updateOne(
+    { email: email.toLowerCase() },
+    { $set: { password_hash: hash, role: 'admin' }, $setOnInsert: {
+      _id: randomUUID(),
+      name: 'Timetable administrator',
+      created_at: new Date(),
+      program_id: null,
+      year_of_study: null,
+      semester: null
+    } },
+    { upsert: true }
+  );
 }
 
 const currentDir=path.dirname(fileURLToPath(import.meta.url));
@@ -35,11 +46,11 @@ if(process.env.NODE_ENV==='production'){
 
 const port=Number(process.env.PORT || 4000);
 try{
-  await pool.query('SELECT 1');
+  await connectDatabase();
   await ensureAdmin();
   startReminderJob();
   app.listen(port,()=>console.log(`Student Planner API listening on http://localhost:${port}`));
 }catch(error){
-  console.error('Could not connect to PostgreSQL. Check DATABASE_URL and run npm run db:migrate.',error);
+  console.error('Could not connect to MongoDB. Check MONGODB_URI and run npm run db:migrate.',error);
   process.exit(1);
 }
