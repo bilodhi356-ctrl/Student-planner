@@ -82,10 +82,11 @@ Upload `.csv`, `.xlsx`, `.xls`, or a PDF from **Administration → Master timeta
 | `venue` | Room or venue name |
 | `group` | Optional session/group label; defaults to `A` |
 | `building` | Optional building name |
+| `lecturer_name` | Optional lecturer/instructor name for a lecture |
 
 The included `sample-timetable.csv` demonstrates the format. Each row represents one session. Re-uploading a master timetable replaces the active sessions and records added, changed, and removed rows for students who selected the affected units.
 
-Administrators can also upload a separate units-offered list in CSV, Excel, or text-based PDF format. It requires `course_code`, `unit_name`, `year`, and `semester`; `program_code` and `program_name` are optional. Allocation PDFs with Computer Science and Computer Technology sections are imported as separate programs, with units shared by both linked to both programs. Repeated unit codes within a program are merged, category suffixes are removed from titles, and the cleanest title is kept. A program-section PDF refreshes those programs' unit links to match the file, while keeping unit records, sessions, and other programs unchanged. CSV imports add or update units without removing program links.
+Administrators can also upload a separate units-offered list in CSV, Excel, or text-based PDF format. It requires `course_code`, `unit_name`, `year`, and `semester`; `program_code`, `program_name`, and `lecturer_name` are optional. Allocation PDFs with Computer Science and Computer Technology sections are imported as separate programs, with units shared by both linked to both programs. Lecturer assignments in allocation PDFs (or a `lecturer_name` CSV column) are applied to matching lecture sessions. Repeated unit codes within a program are merged, category suffixes are removed from titles, and the cleanest title is kept. A program-section PDF refreshes those programs' unit links to match the file, while keeping unit records, sessions, and other programs unchanged. CSV imports add or update units without removing program links.
 
 ## Clash rules
 

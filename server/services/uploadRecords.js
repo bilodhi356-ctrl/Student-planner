@@ -8,6 +8,9 @@ const columnAliases = new Map([
   ['unit', 'course_code'],
   ['course_name', 'unit_name'],
   ['session_type', 'type'],
+  ['lecturer', 'lecturer_name'],
+  ['instructor', 'lecturer_name'],
+  ['instructor_name', 'lecturer_name'],
   ['room', 'venue']
 ]);
 

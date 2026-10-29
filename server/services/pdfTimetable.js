@@ -17,6 +17,10 @@ const columnAliases = new Map([
   ['unit', 'course_code'],
   ['unit_name', 'unit_name'],
   ['course_name', 'unit_name'],
+  ['lecturer_name', 'lecturer_name'],
+  ['lecturer', 'lecturer_name'],
+  ['instructor_name', 'lecturer_name'],
+  ['instructor', 'lecturer_name'],
   ['program_code', 'program_code'],
   ['program_name', 'program_name'],
   ['program', 'program'],
@@ -450,11 +454,19 @@ export function yearSectionItemsToOfferings(items) {
         .replace(/\s+/g, ' ')
         .trim();
       if (!name) continue;
+      const lecturerName = line.items
+        .filter((item) => item.x > categoryX + pageWidth * 0.02)
+        .map((item) => item.text)
+        .join(' ')
+        .replace(/\s*\(\d+\)\s*$/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
       const offering = {
         course_code: parsedCourse.code,
         unit_name: name,
         year: String(currentYear),
         semester: String(semester),
+        ...(lecturerName ? { lecturer_name: lecturerName } : {}),
         ...(currentProgram ? {
           program_code: currentProgram.code,
           program_name: currentProgram.name

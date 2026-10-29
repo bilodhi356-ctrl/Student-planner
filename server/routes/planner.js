@@ -177,6 +177,7 @@ async function getSelectedSessions(studentId, { from, to, kind } = {}) {
       session_date: session.session_date,
       start_time: session.start_time,
       end_time: session.end_time,
+      lecturer_name: session.lecturer_name || null,
       venue: venue?.name || null,
       building: venue?.building || null,
       selected_group: selection.selected_group
@@ -283,6 +284,7 @@ router.get('/calendar.ics', async (req, res, next) => {
         startOutputType: 'local',
         location: session.venue || '',
         description: `${session.kind === 'exam' ? 'Exam' : 'Lecture'} · Group ${session.group_name}`
+          + (session.lecturer_name ? ` · Lecturer: ${session.lecturer_name}` : '')
       };
     });
     createEvents(events, (error, value) => {

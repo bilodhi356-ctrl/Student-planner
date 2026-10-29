@@ -19,6 +19,23 @@ test('parses CSV offerings and normalizes course codes', async () => {
   }]);
 });
 
+test('parses an optional lecturer assignment from an allocation list', async () => {
+  const rows = await parseUnitOfferings(Buffer.from([
+    'course_code,unit_name,year,semester,lecturer_name',
+    'CSC204,Computer Science,2,1,Dr Example'
+  ].join('\n')), 'units.csv');
+
+  assert.deepEqual(rows, [{
+    code: 'CSC204',
+    name: 'Computer Science',
+    year: 2,
+    semester: 1,
+    programCode: null,
+    programName: null,
+    lecturerName: 'Dr Example'
+  }]);
+});
+
 test('parses Excel offerings', async () => {
   const workbook = XLSX.utils.book_new();
   const sheet = XLSX.utils.json_to_sheet([{

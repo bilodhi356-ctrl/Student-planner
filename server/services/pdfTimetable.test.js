@@ -58,7 +58,8 @@ test('parses a text-based PDF table into timetable sessions', async () => {
       startTime: '09:00',
       endTime: '10:00',
       venue: 'Room 1',
-      building: null
+      building: null,
+      lecturerName: null
     },
     {
       code: 'MTH101',
@@ -74,9 +75,19 @@ test('parses a text-based PDF table into timetable sessions', async () => {
       startTime: '13:00',
       endTime: '15:00',
       venue: 'Hall 2',
-      building: null
+      building: null,
+      lecturerName: null
     }
   ]);
+});
+
+test('parses an optional lecturer name from the timetable upload', async () => {
+  const rows = await parseTimetable(Buffer.from([
+    'course_code,unit_name,year,semester,type,start_time,end_time,venue,day,instructor',
+    'CSC204,Computer Science,2,1,lecture,09:00,10:00,Room 1,Monday,Dr Example'
+  ].join('\n')), 'timetable.csv');
+
+  assert.equal(rows[0].lecturerName, 'Dr Example');
 });
 
 test('parses a text-based PDF year-section list into offered units', async () => {
@@ -92,7 +103,8 @@ test('parses a text-based PDF year-section list into offered units', async () =>
     year: 2,
     semester: 1,
     programCode: null,
-    programName: null
+    programName: null,
+    lecturerName: 'Lecturer'
   }]);
 });
 
@@ -133,7 +145,27 @@ test('reads year and semester headings from OCR words and extracts course column
     course_code: 'CIR101',
     unit_name: 'Discrete Structures I',
     year: '1',
-    semester: '1'
+    semester: '1',
+    lecturer_name: 'SMASS'
+  }]);
+});
+
+test('extracts lecturer assignments from allocation PDF rows', () => {
+  const items = [
+    { page: 1, pageWidth: 612, x: 200, y: 20, text: 'COURSES FOR SEMESTER ONE 2026/2027' },
+    { page: 1, pageWidth: 612, x: 60, y: 100, text: 'YEAR ONE' },
+    { page: 1, pageWidth: 612, x: 65, y: 120, text: 'CIR 103' },
+    { page: 1, pageWidth: 612, x: 138, y: 120, text: 'Electrical Principles' },
+    { page: 1, pageWidth: 612, x: 378, y: 120, text: '1C' },
+    { page: 1, pageWidth: 612, x: 400, y: 120, text: 'Mr. Nyabundi (2)' }
+  ];
+
+  assert.deepEqual(yearSectionItemsToOfferings(items), [{
+    course_code: 'CIR103',
+    unit_name: 'Electrical Principles',
+    year: '1',
+    semester: '1',
+    lecturer_name: 'Mr. Nyabundi'
   }]);
 });
 

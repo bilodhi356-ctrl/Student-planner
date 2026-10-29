@@ -58,7 +58,8 @@ export async function parseTimetable(buffer, filename = 'timetable.csv') {
       programCode:String(row.program_code||row.program||inferredProgram?.code||'').trim().toUpperCase()||null,
       programName:String(row.program_name||row.program||inferredProgram?.name||'').trim()||null,kind,
       group, dayOfWeek, sessionDate, startTime, endTime,
-      venue: String(row.venue).trim(), building: String(row.building ?? '').trim() || null
+      venue: String(row.venue).trim(), building: String(row.building ?? '').trim() || null,
+      lecturerName: String(row.lecturer_name ?? '').trim() || null
     };
     if (row.abbreviatedCourseCode) parsed.courseCodeAbbreviated = true;
     return parsed;
@@ -84,7 +85,7 @@ function resolveOfferedCourseCode(code, programCode, coursesByProgram, abbreviat
 }
 
 const identityKey = (row) => [row.code, row.kind, row.group, row.dayOfWeek ?? '', row.sessionDate ?? ''].join('|');
-const sameSession = (a,b) => a.startTime===b.startTime&&a.endTime===b.endTime&&a.venue===b.venue;
+const sameSession = (a,b) => a.startTime===b.startTime&&a.endTime===b.endTime&&a.venue===b.venue&&a.lecturerName===b.lecturerName;
 
 export async function importTimetable(rows, filename, adminId) {
   try {
@@ -133,7 +134,8 @@ export async function importTimetable(rows, filename, adminId) {
         sessionDate: session.session_date,
         startTime: session.start_time.slice(0, 5),
         endTime: session.end_time.slice(0, 5),
-        venue: venueById.get(session.venue_id)?.name || ''
+        venue: venueById.get(session.venue_id)?.name || '',
+        lecturerName: session.lecturer_name || null
       }];
     });
     const groupByIdentity=(input)=>{
@@ -221,6 +223,7 @@ export async function importTimetable(rows, filename, adminId) {
         session_date: row.sessionDate,
         start_time: row.startTime,
         end_time: row.endTime,
+        lecturer_name: row.lecturerName,
         created_at: new Date()
       });
     }

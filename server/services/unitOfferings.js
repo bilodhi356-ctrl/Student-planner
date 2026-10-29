@@ -63,13 +63,18 @@ export async function parseUnitOfferings(buffer, filename = 'units.csv') {
     }
     academicDetailsByCode.set(code, { year, semester });
 
-    return { code, name, year, semester, programCode, programName };
+    const lecturerName = String(row.lecturer_name ?? row.lecturer ?? row.instructor_name ?? row.instructor ?? '').trim();
+    return {
+      code, name, year, semester, programCode, programName,
+      ...(lecturerName ? { lecturerName } : {})
+    };
   });
 }
 
 export async function importUnitOfferings(rows, { syncProgramLinks = false } = {}) {
   try {
     const programIds = new Map();
+    const lecturerAssignedCodes = new Set();
     for (const row of rows) {
       let programId = null;
       if (row.programCode) {
@@ -94,6 +99,13 @@ export async function importUnitOfferings(rows, { syncProgramLinks = false } = {
         }, $setOnInsert: { _id: unitId } },
         { upsert: true }
       );
+      if (row.lecturerName && !lecturerAssignedCodes.has(row.code)) {
+        await collections.sessions.updateMany(
+          { unit_id: unitId, kind: 'lecture' },
+          { $set: { lecturer_name: row.lecturerName } }
+        );
+        lecturerAssignedCodes.add(row.code);
+      }
       if (programId) {
         await collections.unitPrograms.updateOne(
           { unit_id: unitId, program_id: programId },
