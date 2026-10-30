@@ -26,10 +26,18 @@ function normalizePdfOfferings(records) {
       throw new Error(`Unit ${code} appears under multiple years or semesters in this PDF.`);
     }
 
+    if (existing.lecturer_name && offering.lecturer_name && existing.lecturer_name !== offering.lecturer_name) {
+      throw new Error(`Unit ${code} has conflicting lecturer assignments in this PDF.`);
+    }
+    const lecturerName = existing.lecturer_name || offering.lecturer_name;
+
     // Allocation PDFs can repeat a unit in multiple categories or include
     // neighboring row text. Keep the shortest clean title for each unit code.
     if (name.length && (!existing.unit_name || name.length < existing.unit_name.length)) {
+      if (lecturerName) offering.lecturer_name = lecturerName;
       byOffering.set(key, offering);
+    } else if (lecturerName) {
+      existing.lecturer_name = lecturerName;
     }
   }
   return [...byOffering.values()];
@@ -88,15 +96,17 @@ export async function importUnitOfferings(rows, { syncProgramLinks = false } = {
       }
       const existingUnit = await collections.units.findOne({ code: row.code });
       const unitId = existingUnit?._id || randomUUID();
+      const unitUpdate = {
+        name: row.name,
+        year: row.year,
+        semester: row.semester,
+        program_id: existingUnit?.program_id || programId,
+        active: true
+      };
+      if (row.lecturerName) unitUpdate.lecturer_name = row.lecturerName;
       await collections.units.updateOne(
         { code: row.code },
-        { $set: {
-          name: row.name,
-          year: row.year,
-          semester: row.semester,
-          program_id: existingUnit?.program_id || programId,
-          active: true
-        }, $setOnInsert: { _id: unitId } },
+        { $set: unitUpdate, $setOnInsert: { _id: unitId } },
         { upsert: true }
       );
       if (row.lecturerName && !lecturerAssignedCodes.has(row.code)) {

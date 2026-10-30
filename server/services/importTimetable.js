@@ -195,6 +195,7 @@ async function replaceSessionRows(rows, filename, adminId, replaceKind = null) {
       year: row.year,
       semester: row.semester,
       program_id: programId || existingUnit?.program_id || null,
+      lecturer_name: row.lecturerName || existingUnit?.lecturer_name || null,
       active: true
     };
     await collections.units.updateOne(
@@ -225,7 +226,7 @@ async function replaceSessionRows(rows, filename, adminId, replaceKind = null) {
       session_date: row.sessionDate,
       start_time: row.startTime,
       end_time: row.endTime,
-      lecturer_name: row.lecturerName,
+      lecturer_name: row.lecturerName || existingUnit?.lecturer_name || null,
       created_at: new Date()
     });
   }

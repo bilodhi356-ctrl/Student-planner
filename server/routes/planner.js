@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import express from 'express';
 import { ObjectId } from 'mongodb';
+import { randomUUID } from 'node:crypto';
 import { createEvents } from 'ics';
 import { parseTimetable, importTimetable, importExamTimetable } from '../services/importTimetable.js';
 import { importUnitOfferings, parseUnitOfferings } from '../services/unitOfferings.js';
@@ -57,6 +58,132 @@ router.get('/admin/students', requireAdministrator, async (_req, res, next) => {
         created_at: student.created_at
       }))
       .sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email)));
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/published', requireAdmin, async (_req, res, next) => {
+  try {
+    const [units, sessions, venues, programs, unitPrograms] = await Promise.all([
+      collections.units.find().sort({ code: 1 }).toArray(),
+      collections.sessions.find().toArray(),
+      collections.venues.find().toArray(),
+      collections.programs.find().toArray(),
+      collections.unitPrograms.find().toArray()
+    ]);
+    const unitsById = new Map(units.map((unit) => [unit._id, unit]));
+    const venuesById = new Map(venues.map((venue) => [venue._id, venue]));
+    const programNames = new Map(programs.map((program) => [program._id, program.name]));
+    const programsByUnit = new Map();
+    for (const link of unitPrograms) {
+      const names = programsByUnit.get(link.unit_id) || [];
+      const name = programNames.get(link.program_id);
+      if (name) names.push(name);
+      programsByUnit.set(link.unit_id, names);
+    }
+    res.json({
+      sessions: sessions.flatMap((session) => {
+        const unit = unitsById.get(session.unit_id);
+        if (!unit) return [];
+        return [{
+          id: session._id,
+          unit_id: unit._id,
+          code: unit.code,
+          name: unit.name,
+          year: unit.year,
+          semester: unit.semester,
+          kind: session.kind,
+          group_name: session.group_name,
+          day_of_week: session.day_of_week,
+          session_date: session.session_date,
+          start_time: session.start_time,
+          end_time: session.end_time,
+          lecturer_name: session.lecturer_name || null,
+          venue: venuesById.get(session.venue_id)?.name || null
+        }];
+      }).sort((a, b) => a.code.localeCompare(b.code)
+        || String(a.session_date || '').localeCompare(String(b.session_date || ''))
+        || (a.day_of_week ?? 7) - (b.day_of_week ?? 7)
+        || a.start_time.localeCompare(b.start_time)),
+      units: units.filter((unit) => unit.active).map((unit) => ({
+        id: unit._id,
+        code: unit.code,
+        name: unit.name,
+        year: unit.year,
+        semester: unit.semester,
+        lecturer_name: unit.lecturer_name || null,
+        programs: programsByUnit.get(unit._id) || []
+      }))
+    });
+  } catch (error) { next(error); }
+});
+
+router.delete('/admin/sessions/:sessionId', requireAdmin, async (req, res, next) => {
+  try {
+    const session = await collections.sessions.findOne({ _id: req.params.sessionId });
+    if (!session) return res.status(404).json({ error: 'Timetable session not found.' });
+    const unit = await collections.units.findOne({ _id: session.unit_id });
+    if (unit) {
+      await collections.timetableChanges.insertOne({
+        _id: randomUUID(),
+        unit_code: unit.code,
+        change_type: 'removed',
+        before_data: {
+          code: unit.code,
+          kind: session.kind,
+          group: session.group_name,
+          dayOfWeek: session.day_of_week,
+          sessionDate: session.session_date,
+          startTime: session.start_time,
+          endTime: session.end_time,
+          venue: (await collections.venues.findOne({ _id: session.venue_id }))?.name || ''
+        },
+        recorded_at: new Date()
+      });
+    }
+    await collections.sessions.deleteOne({ _id: session._id });
+    await collections.reminderDeliveries.deleteMany({ session_id: session._id });
+    res.json({ deleted: true });
+  } catch (error) { next(error); }
+});
+
+router.delete('/admin/units/:unitId', requireAdmin, async (req, res, next) => {
+  try {
+    const unit = await collections.units.findOne({ _id: req.params.unitId });
+    if (!unit) return res.status(404).json({ error: 'Offered unit not found.' });
+    const [sessions, venues] = await Promise.all([
+      collections.sessions.find({ unit_id: unit._id }).toArray(),
+      collections.venues.find().toArray()
+    ]);
+    const venuesById = new Map(venues.map((venue) => [venue._id, venue.name]));
+    if (sessions.length) {
+      await collections.timetableChanges.insertMany(sessions.map((session) => ({
+        _id: randomUUID(),
+        unit_code: unit.code,
+        change_type: 'removed',
+        before_data: {
+          code: unit.code,
+          kind: session.kind,
+          group: session.group_name,
+          dayOfWeek: session.day_of_week,
+          sessionDate: session.session_date,
+          startTime: session.start_time,
+          endTime: session.end_time,
+          venue: venuesById.get(session.venue_id) || ''
+        },
+        recorded_at: new Date()
+      })));
+    }
+    const sessionIds = sessions.map((session) => session._id);
+    await Promise.all([
+      collections.selections.deleteMany({ unit_id: unit._id }),
+      collections.unitPrograms.deleteMany({ unit_id: unit._id }),
+      collections.sessions.deleteMany({ unit_id: unit._id }),
+      sessionIds.length
+        ? collections.reminderDeliveries.deleteMany({ session_id: { $in: sessionIds } })
+        : Promise.resolve()
+    ]);
+    await collections.units.deleteOne({ _id: unit._id });
+    res.json({ deleted: true, removedSessions: sessions.length });
   } catch (error) { next(error); }
 });
 
@@ -249,6 +376,7 @@ async function getSessionsForUnitGroup(unitId, groupName) {
     session_date: session.session_date,
     start_time: session.start_time,
     end_time: session.end_time,
+    lecturer_name: session.lecturer_name || unit.lecturer_name || null,
     venue: venuesById.get(session.venue_id)?.name || null
   }));
 }

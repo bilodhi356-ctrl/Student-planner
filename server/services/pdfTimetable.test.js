@@ -108,6 +108,19 @@ test('parses a text-based PDF year-section list into offered units', async () =>
   }]);
 });
 
+test('preserves lecturer matching when repeated PDF offerings have a cleaner title', async () => {
+  const rows = await parseUnitOfferings(makePdf([
+    ['COURSES FOR SEMESTER ONE'],
+    ['YEAR TWO'],
+    ['CSC 204', 'Computer Science Unit Description', '', '', '', '', '1C', 'Dr Example'],
+    ['CSC 204', 'Computer Science', '', '', '', '', '1E', '']
+  ]), 'units.pdf');
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Computer Science');
+  assert.equal(rows[0].lecturerName, 'Dr Example');
+});
+
 test('continues reading rows across pages with repeated table headings', () => {
   const pageOne = headings.map((text, index) => ({ page: 1, x: index * 10, y: 1, text }));
   const firstRow = ['CSC204', 'Computer Science', '2', '1', 'lecture', '09:00', '10:00', 'Room 1']
