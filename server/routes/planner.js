@@ -2,7 +2,7 @@ import { Router } from 'express';
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { createEvents } from 'ics';
-import { parseTimetable, importTimetable } from '../services/importTimetable.js';
+import { parseTimetable, importTimetable, importExamTimetable } from '../services/importTimetable.js';
 import { importUnitOfferings, parseUnitOfferings } from '../services/unitOfferings.js';
 import { detectScheduleClashes } from '../domain/clashes.js';
 import { collections } from '../db/index.js';
@@ -306,6 +306,17 @@ router.post('/admin/import', requireAdmin, express.raw({ type: () => true, limit
     const rows = await parseTimetable(req.body, filename);
     res.json(await importTimetable(rows, filename, req.user.sub));
   } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+router.post('/admin/exams/import', requireAdmin, express.raw({ type: () => true, limit: '12mb' }), async (req, res) => {
+  try {
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'Choose an exam timetable file to upload.' });
+    const filename = decodeURIComponent(req.headers['x-file-name'] || 'exams.csv');
+    const rows = await parseTimetable(req.body, filename);
+    res.json(await importExamTimetable(rows, filename, req.user.sub));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 router.post('/admin/units/import', requireAdmin, express.raw({ type: () => true, limit: '12mb' }), async (req, res) => {

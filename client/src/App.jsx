@@ -111,6 +111,18 @@ function App(){
       </div>
     </section>
     <section className="panel section-panel">
+      <PanelHead title="Upload exam timetable" sub="Refresh only the exam sessions without replacing the lecture timetable."/>
+      <form onSubmit={async(e)=>{e.preventDefault();const file=e.currentTarget.file.files[0];if(!file)return setError('Choose an exam timetable file first.');setBusy(true);setError('');try{const result=await fetch('/api/admin/exams/import',{method:'POST',headers:{Authorization:`Bearer ${auth.token}`,'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file});const body=await readJsonResponse(result);setNotice(`Imported ${body.rowCount} exam rows. ${body.added} added, ${body.changed} changed, and ${body.removed} removed.`);e.target.reset();await load()}catch(err){setError(errorText(err))}finally{setBusy(false)}}} className="upload-form">
+        <label className="upload-drop"><span className="upload-icon">↑</span><b>Choose an exam file</b><small>CSV, XLSX, XLS, or PDF up to 12 MB</small><input name="file" type="file" accept=".csv,.xlsx,.xls,.pdf" required/></label>
+        <button className="primary" disabled={busy}>{busy?'Importing…':'Upload exams'}</button>
+      </form>
+      <div className="format-note">
+        <b>Required columns</b><code>course_code, unit_name, year, semester, type, start_time, end_time, venue, date</code>
+        <b>Optional columns</b><code>group, lecturer_name, building</code>
+        <span>Use this for exam schedules only. The upload replaces the current exam sessions while leaving lecture sessions unchanged.</span>
+      </div>
+    </section>
+    <section className="panel section-panel">
       <PanelHead title="Upload units offered" sub="Add or update the units students can select, separately from the timetable."/>
       <form onSubmit={uploadUnits} className="upload-form">
         <label className="upload-drop"><span className="upload-icon">↑</span><b>Choose a units-offered file</b><small>PDF, CSV, XLSX, or XLS — up to 12 MB</small><input name="file" type="file" accept=".pdf,.csv,.xlsx,.xls" required/></label>

@@ -87,147 +87,163 @@ function resolveOfferedCourseCode(code, programCode, coursesByProgram, abbreviat
 const identityKey = (row) => [row.code, row.kind, row.group, row.dayOfWeek ?? '', row.sessionDate ?? ''].join('|');
 const sameSession = (a,b) => a.startTime===b.startTime&&a.endTime===b.endTime&&a.venue===b.venue&&a.lecturerName===b.lecturerName;
 
+async function replaceSessionRows(rows, filename, adminId, replaceKind = null) {
+  const units = await collections.units.find({ active: true }).toArray();
+  const unitPrograms = await collections.unitPrograms.find().toArray();
+  const programs = await collections.programs.find().toArray();
+  const programCodes = new Map(programs.map((program) => [program._id, program.code]));
+  const offeringResult = unitPrograms.flatMap((link) => {
+    const unit = units.find((item) => item._id === link.unit_id);
+    const programCode = programCodes.get(link.program_id);
+    return unit && programCode ? [{ program_code: programCode, code: unit.code, name: unit.name }] : [];
+  });
+  const coursesByProgram = new Map();
+  const unitNames = new Map();
+  for (const offering of offeringResult) {
+    const codes = coursesByProgram.get(offering.program_code) || [];
+    codes.push(offering.code.toUpperCase());
+    coursesByProgram.set(offering.program_code, codes);
+    unitNames.set(offering.code.toUpperCase(), offering.name);
+  }
+  rows = rows.map((row) => {
+    const originalCode = row.code.toUpperCase();
+    const code = resolveOfferedCourseCode(originalCode, row.programCode, coursesByProgram, row.courseCodeAbbreviated);
+    return {
+      ...row,
+      code,
+      name: String(row.name).trim().toUpperCase() === originalCode
+        ? unitNames.get(code) || code
+        : row.name
+    };
+  });
+  const [existingSessions, venues] = await Promise.all([
+    collections.sessions.find().toArray(),
+    collections.venues.find().toArray()
+  ]);
+  const currentKindSessions = replaceKind ? existingSessions.filter((session) => session.kind === replaceKind) : existingSessions;
+  const unitById = new Map(units.map((unit) => [unit._id, unit]));
+  const venueById = new Map(venues.map((venue) => [venue._id, venue]));
+  const old = currentKindSessions.flatMap((session) => {
+    const unit = unitById.get(session.unit_id);
+    if (!unit) return [];
+    return [{
+      code: unit.code.toUpperCase(),
+      kind: session.kind,
+      group: session.group_name,
+      dayOfWeek: session.day_of_week,
+      sessionDate: session.session_date,
+      startTime: session.start_time.slice(0, 5),
+      endTime: session.end_time.slice(0, 5),
+      venue: venueById.get(session.venue_id)?.name || '',
+      lecturerName: session.lecturer_name || null
+    }];
+  });
+  const groupByIdentity=(input)=>{
+    const grouped=new Map();
+    for(const row of input){const key=identityKey(row);const list=grouped.get(key)||[];list.push(row);grouped.set(key,list)}
+    for(const list of grouped.values())list.sort((a,b)=>a.startTime.localeCompare(b.startTime));
+    return grouped;
+  };
+  const oldGroups=groupByIdentity(old);
+  const newGroups=groupByIdentity(rows);
+  const importId = randomUUID();
+  await collections.timetableImports.insertOne({
+    _id: importId,
+    uploaded_by: adminId,
+    filename,
+    row_count: rows.length,
+    imported_at: new Date()
+  });
+  const allKeys=new Set([...oldGroups.keys(),...newGroups.keys()]);
+  const changes = [];
+  for(const key of allKeys){
+    const previous=oldGroups.get(key)||[],next=newGroups.get(key)||[];
+    const common=Math.min(previous.length,next.length);
+    for(let index=0;index<common;index++)if(!sameSession(previous[index],next[index]))changes.push({
+      _id: randomUUID(), import_id: importId, unit_code: next[index].code, change_type: 'changed',
+      before_data: previous[index], after_data: next[index], recorded_at: new Date()
+    });
+    for(const prior of previous.slice(common))changes.push({
+      _id: randomUUID(), import_id: importId, unit_code: prior.code, change_type: 'removed',
+      before_data: prior, recorded_at: new Date()
+    });
+    for(const item of next.slice(common))changes.push({
+      _id: randomUUID(), import_id: importId, unit_code: item.code, change_type: 'added',
+      after_data: item, recorded_at: new Date()
+    });
+  }
+  if (changes.length) await collections.timetableChanges.insertMany(changes);
+  if (replaceKind) await collections.sessions.deleteMany({ kind: replaceKind });
+  else await collections.sessions.deleteMany({});
+  if (replaceKind === 'exam') await collections.reminderDeliveries.deleteMany({ reminder_kind: 'exam' });
+  else await collections.reminderDeliveries.deleteMany({});
+  for (const row of rows) {
+    let programId = null;
+    if (row.programCode) {
+      await collections.programs.updateOne(
+        { code: row.programCode },
+        { $set: { name: row.programName || row.programCode }, $setOnInsert: { _id: randomUUID() } },
+        { upsert: true }
+      );
+      programId = (await collections.programs.findOne({ code: row.programCode }))._id;
+    }
+    const existingUnit = await collections.units.findOne({ code: row.code });
+    const unitId = existingUnit?._id || randomUUID();
+    const unitDocument = {
+      code: row.code,
+      name: row.name === row.code && existingUnit ? existingUnit.name : row.name,
+      year: row.year,
+      semester: row.semester,
+      program_id: programId || existingUnit?.program_id || null,
+      active: true
+    };
+    await collections.units.updateOne(
+      { code: row.code },
+      { $set: unitDocument, $setOnInsert: { _id: unitId } },
+      { upsert: true }
+    );
+    if (programId) {
+      await collections.unitPrograms.updateOne(
+        { unit_id: unitId, program_id: programId },
+        { $setOnInsert: { _id: `${unitId}:${programId}` } },
+        { upsert: true }
+      );
+    }
+    await collections.venues.updateOne(
+      { name: row.venue },
+      { $set: row.building ? { building: row.building } : {}, $setOnInsert: { _id: randomUUID(), name: row.venue } },
+      { upsert: true }
+    );
+    const venue = await collections.venues.findOne({ name: row.venue });
+    await collections.sessions.insertOne({
+      _id: randomUUID(),
+      unit_id: unitId,
+      venue_id: venue._id,
+      kind: row.kind,
+      group_name: row.group,
+      day_of_week: row.dayOfWeek ?? null,
+      session_date: row.sessionDate,
+      start_time: row.startTime,
+      end_time: row.endTime,
+      lecturer_name: row.lecturerName,
+      created_at: new Date()
+    });
+  }
+  const changed=[...allKeys].reduce((total,key)=>{const a=oldGroups.get(key)||[],b=newGroups.get(key)||[];return total+Array.from({length:Math.min(a.length,b.length)},(_,index)=>sameSession(a[index],b[index])?0:1).reduce((x,y)=>x+y,0)},0);
+  return { importId, rowCount: rows.length, added: [...newGroups.entries()].reduce((n,[key,list])=>n+Math.max(0,list.length-(oldGroups.get(key)||[]).length),0), removed: [...oldGroups.entries()].reduce((n,[key,list])=>n+Math.max(0,list.length-(newGroups.get(key)||[]).length),0), changed };
+}
+
 export async function importTimetable(rows, filename, adminId) {
   try {
-    const units = await collections.units.find({ active: true }).toArray();
-    const unitPrograms = await collections.unitPrograms.find().toArray();
-    const programs = await collections.programs.find().toArray();
-    const programCodes = new Map(programs.map((program) => [program._id, program.code]));
-    const offeringResult = unitPrograms.flatMap((link) => {
-      const unit = units.find((item) => item._id === link.unit_id);
-      const programCode = programCodes.get(link.program_id);
-      return unit && programCode ? [{ program_code: programCode, code: unit.code, name: unit.name }] : [];
-    });
-    const coursesByProgram = new Map();
-    const unitNames = new Map();
-    for (const offering of offeringResult) {
-      const codes = coursesByProgram.get(offering.program_code) || [];
-      codes.push(offering.code.toUpperCase());
-      coursesByProgram.set(offering.program_code, codes);
-      unitNames.set(offering.code.toUpperCase(), offering.name);
-    }
-    rows = rows.map((row) => {
-      const originalCode = row.code.toUpperCase();
-      const code = resolveOfferedCourseCode(originalCode, row.programCode, coursesByProgram, row.courseCodeAbbreviated);
-      return {
-        ...row,
-        code,
-        name: String(row.name).trim().toUpperCase() === originalCode
-          ? unitNames.get(code) || code
-          : row.name
-      };
-    });
-    const [existingSessions, venues] = await Promise.all([
-      collections.sessions.find().toArray(),
-      collections.venues.find().toArray()
-    ]);
-    const unitById = new Map(units.map((unit) => [unit._id, unit]));
-    const venueById = new Map(venues.map((venue) => [venue._id, venue]));
-    const old = existingSessions.flatMap((session) => {
-      const unit = unitById.get(session.unit_id);
-      if (!unit) return [];
-      return [{
-        code: unit.code.toUpperCase(),
-        kind: session.kind,
-        group: session.group_name,
-        dayOfWeek: session.day_of_week,
-        sessionDate: session.session_date,
-        startTime: session.start_time.slice(0, 5),
-        endTime: session.end_time.slice(0, 5),
-        venue: venueById.get(session.venue_id)?.name || '',
-        lecturerName: session.lecturer_name || null
-      }];
-    });
-    const groupByIdentity=(input)=>{
-      const grouped=new Map();
-      for(const row of input){const key=identityKey(row);const list=grouped.get(key)||[];list.push(row);grouped.set(key,list)}
-      for(const list of grouped.values())list.sort((a,b)=>a.startTime.localeCompare(b.startTime));
-      return grouped;
-    };
-    const oldGroups=groupByIdentity(old);
-    const newGroups=groupByIdentity(rows);
-    const importId = randomUUID();
-    await collections.timetableImports.insertOne({
-      _id: importId,
-      uploaded_by: adminId,
-      filename,
-      row_count: rows.length,
-      imported_at: new Date()
-    });
-    const allKeys=new Set([...oldGroups.keys(),...newGroups.keys()]);
-    const changes = [];
-    for(const key of allKeys){
-      const previous=oldGroups.get(key)||[],next=newGroups.get(key)||[];
-      const common=Math.min(previous.length,next.length);
-      for(let index=0;index<common;index++)if(!sameSession(previous[index],next[index]))changes.push({
-        _id: randomUUID(), import_id: importId, unit_code: next[index].code, change_type: 'changed',
-        before_data: previous[index], after_data: next[index], recorded_at: new Date()
-      });
-      for(const prior of previous.slice(common))changes.push({
-        _id: randomUUID(), import_id: importId, unit_code: prior.code, change_type: 'removed',
-        before_data: prior, recorded_at: new Date()
-      });
-      for(const item of next.slice(common))changes.push({
-        _id: randomUUID(), import_id: importId, unit_code: item.code, change_type: 'added',
-        after_data: item, recorded_at: new Date()
-      });
-    }
-    if (changes.length) await collections.timetableChanges.insertMany(changes);
-    await collections.sessions.deleteMany({});
-    await collections.reminderDeliveries.deleteMany({});
-    for (const row of rows) {
-      let programId = null;
-      if (row.programCode) {
-        await collections.programs.updateOne(
-          { code: row.programCode },
-          { $set: { name: row.programName || row.programCode }, $setOnInsert: { _id: randomUUID() } },
-          { upsert: true }
-        );
-        programId = (await collections.programs.findOne({ code: row.programCode }))._id;
-      }
-      const existingUnit = await collections.units.findOne({ code: row.code });
-      const unitId = existingUnit?._id || randomUUID();
-      const unitDocument = {
-        code: row.code,
-        name: row.name === row.code && existingUnit ? existingUnit.name : row.name,
-        year: row.year,
-        semester: row.semester,
-        program_id: programId || existingUnit?.program_id || null,
-        active: true
-      };
-      await collections.units.updateOne(
-        { code: row.code },
-        { $set: unitDocument, $setOnInsert: { _id: unitId } },
-        { upsert: true }
-      );
-      if (programId) {
-        await collections.unitPrograms.updateOne(
-          { unit_id: unitId, program_id: programId },
-          { $setOnInsert: { _id: `${unitId}:${programId}` } },
-          { upsert: true }
-        );
-      }
-      await collections.venues.updateOne(
-        { name: row.venue },
-        { $set: row.building ? { building: row.building } : {}, $setOnInsert: { _id: randomUUID(), name: row.venue } },
-        { upsert: true }
-      );
-      const venue = await collections.venues.findOne({ name: row.venue });
-      await collections.sessions.insertOne({
-        _id: randomUUID(),
-        unit_id: unitId,
-        venue_id: venue._id,
-        kind: row.kind,
-        group_name: row.group,
-        day_of_week: row.dayOfWeek ?? null,
-        session_date: row.sessionDate,
-        start_time: row.startTime,
-        end_time: row.endTime,
-        lecturer_name: row.lecturerName,
-        created_at: new Date()
-      });
-    }
-    const changed=[...allKeys].reduce((total,key)=>{const a=oldGroups.get(key)||[],b=newGroups.get(key)||[];return total+Array.from({length:Math.min(a.length,b.length)},(_,index)=>sameSession(a[index],b[index])?0:1).reduce((x,y)=>x+y,0)},0);
-    return { importId, rowCount: rows.length, added: [...newGroups.entries()].reduce((n,[key,list])=>n+Math.max(0,list.length-(oldGroups.get(key)||[]).length),0), removed: [...oldGroups.entries()].reduce((n,[key,list])=>n+Math.max(0,list.length-(newGroups.get(key)||[]).length),0), changed };
+    return await replaceSessionRows(rows, filename, adminId);
+  } catch (error) { throw error; }
+}
+
+export async function importExamTimetable(rows, filename, adminId) {
+  try {
+    const examRows = rows.filter((row) => String(row.kind || row.type || '').trim().toLowerCase().startsWith('exam'));
+    if (!examRows.length) throw new Error('The uploaded exam timetable file has no exam rows.');
+    if (examRows.length !== rows.length) throw new Error('Exam timetable uploads can only contain exam sessions.');
+    return await replaceSessionRows(examRows, filename, adminId, 'exam');
   } catch (error) { throw error; }
 }
