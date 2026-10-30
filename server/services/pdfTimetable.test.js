@@ -230,3 +230,31 @@ test('reads weekly teaching timetables from day, group, and hourly grid cells', 
     }
   ]);
 });
+
+test('recognizes THUR headings and keeps affected course rows on Thursday', () => {
+  const times = ['7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
+  const x = [133, 195, 264, 324, 381, 441, 505, 555, 604, 658, 722];
+  const pageItems = [
+    { x: 350, y: 30, text: 'SEM 1 2026/2027' },
+    ...times.map((text, index) => ({ x: x[index], y: 100, text })),
+    { x: 56, y: 140, text: 'TUE' },
+    { x: 94, y: 140, text: 'CCS 4' },
+    { x: 195, y: 140, text: 'CIR405 (TB3)' },
+    { x: 56, y: 180, text: 'THUR' },
+    { x: 94, y: 180, text: 'CCS 4' },
+    { x: 122, y: 180, text: 'BBE411 (NL5)' },
+    { x: 188, y: 180, text: 'BBE411 (NL5)' },
+    { x: 254, y: 180, text: 'BBE411 (NL5)' },
+    { x: 94, y: 210, text: 'CCT 4' },
+    { x: 555, y: 210, text: 'CCT401 (NTW LAB)' }
+  ].map((item) => ({ ...item, page: 1 }));
+
+  const records = teachingTimetablePagesToRecords([{ number: 1, items: pageItems }]);
+  assert.deepEqual(records.map(({ course_code, day, start_time, end_time }) => [
+    course_code, day, start_time, end_time
+  ]), [
+    ['CIR405', 'tuesday', '08:00', '09:00'],
+    ['BBE411', 'thursday', '07:00', '10:00'],
+    ['CCT401', 'thursday', '14:00', '15:00']
+  ]);
+});

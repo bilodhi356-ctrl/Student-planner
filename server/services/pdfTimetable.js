@@ -496,7 +496,7 @@ export function yearSectionItemsToOfferings(items) {
 }
 
 const timetableDayNames = new Map([
-  ['MON', 'monday'], ['TUE', 'tuesday'], ['WED', 'wednesday'], ['THU', 'thursday'],
+  ['MON', 'monday'], ['TUE', 'tuesday'], ['WED', 'wednesday'], ['THU', 'thursday'], ['THUR', 'thursday'],
   ['FRI', 'friday'], ['SAT', 'saturday'], ['SUN', 'sunday']
 ]);
 
@@ -780,7 +780,7 @@ export function teachingTimetablePagesToRecords(pages) {
       if (dayMarker) currentDay = timetableDayNames.get(dayMarker.text.trim().toUpperCase());
       if (!currentDay) continue;
       const [, program, year] = label.text.trim().toUpperCase().match(/^(CCS|CCT)\s*(\d)$/);
-      const rowItems = page.items.filter((item) => item.x >= 125
+      const rowItems = page.items.filter((item) => item.x >= timeColumns[0].x - 30
         && item.y >= label.y - 0.5
         && (!nextLabel || item.y < nextLabel.y - 0.5));
       rows.push({
