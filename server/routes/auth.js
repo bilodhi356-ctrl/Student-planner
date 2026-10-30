@@ -3,6 +3,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { collections } from '../db/index.js';
+import { programCodeFromRegistrationNumber } from '../domain/registration.js';
 
 const router = Router();
 const publicUser = (student) => ({
@@ -24,11 +25,10 @@ router.post('/register', async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
     const registrationNumber = String(req.body.registrationNumber || '').trim().toUpperCase();
-    const match = registrationNumber.match(/^(CCT|CCS)\/(\d{5})\/((?:19|20)\d{2})$/);
-    if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(email || '') || !match || typeof password !== 'string' || password.length < 8) {
+    const programCode = programCodeFromRegistrationNumber(registrationNumber);
+    if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(email || '') || !programCode || typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: 'Enter your name, university email, registration number (CCT/00002/YYYY or CCS/00023/YYYY), and a password of at least 8 characters.' });
     }
-    const programCode = match[1] === 'CCT' ? 'BSC-CT' : 'BSC-CS';
     const program = await collections.programs.findOne({ code: programCode });
     if (!program) return res.status(500).json({ error: 'The matching study program is not configured.' });
     const student = {

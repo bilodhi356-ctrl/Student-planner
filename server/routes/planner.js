@@ -6,6 +6,7 @@ import { createEvents } from 'ics';
 import { parseTimetable, importTimetable, importExamTimetable } from '../services/importTimetable.js';
 import { importUnitOfferings, parseUnitOfferings } from '../services/unitOfferings.js';
 import { detectScheduleClashes } from '../domain/clashes.js';
+import { programCodeFromRegistrationNumber } from '../domain/registration.js';
 import { collections } from '../db/index.js';
 import { requireAdmin, requireAdministrator, requireAuth } from '../middleware/auth.js';
 
@@ -21,12 +22,18 @@ router.get('/programs', async (_req, res, next) => {
 
 router.get('/academic-profile', async (req, res, next) => {
   try {
-    const student = await collections.students.findOne(
-      { _id: req.user.sub },
-      { projection: { program_id: 1, year_of_study: 1, semester: 1 } }
-    );
+    const [student, programs] = await Promise.all([
+      collections.students.findOne(
+        { _id: req.user.sub },
+        { projection: { program_id: 1, registration_number: 1, year_of_study: 1, semester: 1 } }
+      ),
+      collections.programs.find({}, { projection: { code: 1 } }).toArray()
+    ]);
+    const programById = programs.find((program) => String(program._id) === String(student?.program_id));
+    const inferredProgram = programs.find((program) =>
+      program.code === programCodeFromRegistrationNumber(student?.registration_number));
     res.json(student ? {
-      program_id: student.program_id,
+      program_id: programById?._id || inferredProgram?._id,
       year_of_study: student.year_of_study,
       semester: student.semester
     } : {});
@@ -45,14 +52,17 @@ router.get('/admin/students', requireAdministrator, async (_req, res, next) => {
       collections.students.find({ role: 'student' }).toArray(),
       collections.programs.find().toArray()
     ]);
-    const programNames = new Map(programs.map((program) => [program._id, program.name]));
+    const programNames = new Map(programs.map((program) => [String(program._id), program.name]));
+    const programNamesByCode = new Map(programs.map((program) => [program.code, program.name]));
     res.json(students
       .map((student) => ({
         id: student._id,
         name: student.name,
         email: student.email,
         registration_number: student.registration_number,
-        program: programNames.get(student.program_id) || null,
+        program: programNames.get(String(student.program_id))
+          || programNamesByCode.get(programCodeFromRegistrationNumber(student.registration_number))
+          || null,
         year_of_study: student.year_of_study,
         semester: student.semester,
         created_at: student.created_at
@@ -72,11 +82,11 @@ router.get('/admin/published', requireAdmin, async (_req, res, next) => {
     ]);
     const unitsById = new Map(units.map((unit) => [unit._id, unit]));
     const venuesById = new Map(venues.map((venue) => [venue._id, venue]));
-    const programNames = new Map(programs.map((program) => [program._id, program.name]));
+    const programNames = new Map(programs.map((program) => [String(program._id), program.name]));
     const programsByUnit = new Map();
     for (const link of unitPrograms) {
       const names = programsByUnit.get(link.unit_id) || [];
-      const name = programNames.get(link.program_id);
+      const name = programNames.get(String(link.program_id));
       if (name) names.push(name);
       programsByUnit.set(link.unit_id, names);
     }
